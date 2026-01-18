@@ -10,6 +10,16 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api');
 
+  // ----------------------------------------------------
+  // 🔥 CONFIGURACIÓN CORS (Cross-Origin Resource Sharing)
+  // ----------------------------------------------------
+  app.enableCors({
+    origin: 'http://localhost:5173', // Permite solo peticiones desde el origen del frontend de Vite/React
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', // Métodos HTTP permitidos
+    credentials: true, // Importante si manejas cookies o sesiones (aunque para JWT no es crítico, es buena práctica)
+  });
+  // ----------------------------------------------------
+
   // --- ¡AÑADE ESTA LÍNEA PARA HABILITAR EL PARSEO DE JSON EXPLÍCITAMENTE! ---
   app.use(express.json()); // Habilita el middleware para parsear cuerpos JSON
   // --- FIN DE LA ADICIÓN ---

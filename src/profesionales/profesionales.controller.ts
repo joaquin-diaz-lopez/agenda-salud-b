@@ -7,14 +7,16 @@ import {
   Param,
   Patch,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { ProfesionalesService } from './profesionales.service';
 import { CreateProfesionalDto } from './dto/create-profesional.dto';
 import { UpdateProfesionalDto } from './dto/update-profesional.dto';
 import { Profesional } from './entities/profesional.entity';
-
+import { Request as ExpressRequest } from 'express';
 // --- NUEVAS IMPORTACIONES PARA EL CONTROL DE ACCESO y SWAGGER ---
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'; // Para asegurar que el usuario esté autenticado
+import { JwtPayload } from 'src/auth/interfaces/jwt-payload.interface';
 import { RolesGuard } from '../common/guards/roles.guard'; // Tu guard de roles personalizado
 import { Roles } from '../common/decorators/roles.decorator'; // Tu decorador de roles personalizado
 import {
@@ -24,7 +26,9 @@ import {
   ApiUpdateOperation,
 } from '../common/decorators/api-operations.decorator';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-
+interface CustomRequest extends ExpressRequest {
+  user: JwtPayload;
+}
 /**
  * Controlador para la gestión de Profesionales.
  * Expone los endpoints HTTP para realizar operaciones CRUD básicas sobre los profesionales.
@@ -62,6 +66,28 @@ export class ProfesionalesController {
   // Sin embargo, JwtAuthGuard sigue protegiéndolo.
   async findAll(): Promise<Profesional[]> {
     return this.profesionalesService.findAll();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  me(@Request() req: CustomRequest) {
+    // 👈 Usamos @Request para acceder al usuario inyectado
+    // El payload del JWT (ej: { usuarioId: 1, rol: 'profesional', iat: ..., exp: ... })
+    // es inyectado en req.user por el JwtAuthGuard.
+
+    console.log('Datos del usuario autenticado:', req.user);
+
+    // DEBE RETORNAR UN OBJETO JSON VÁLIDO
+    return {
+      // Mapeamos 'sub' a 'usuarioId' para el Frontend
+      usuarioId: req.user.sub,
+
+      // Mapeamos 'nombreRol' a 'rol' para el Frontend
+      rol: req.user.nombreRol,
+
+      nombreUsuario: req.user.nombreUsuario,
+      mensaje: 'Acceso y token válidos.',
+    };
   }
 
   /**
