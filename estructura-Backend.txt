@@ -1,0 +1,228 @@
+.env
+.env-copy-20250915
+.gitignore
+.prettierrc
+data-source.ts
+dist
+eslint.config.mjs
+estructura-Backend.txt
+nest-cli.json
+node_modules
+package-lock.json
+package.json
+README.md
+src
+test
+tsconfig.build.json
+tsconfig.json
+Listado de rutas de carpetas para el volumen Windows
+El n£mero de serie del volumen es 00000076 1840:4324
+C:\AGENDASALUD\AGENDA-SALUD-B\SRC
+|   app.controller.spec.ts
+|   app.controller.ts
+|   app.module.ts
+|   app.service.ts
+|   main.ts
+|   
++---agendas
+|   |   agendas.module.ts
+|   |   
+|   +---agendas-profesional
+|   |   |   agenda-profesional.controller.ts
+|   |   |   agenda-profesional.service.ts
+|   |   |   agendas-profesional.module.ts
+|   |   |   
+|   |   +---dto
+|   |   |       create-agenda-profesional.dto.ts
+|   |   |       update-agenda-profesional.dto.ts
+|   |   |       
+|   |   \---entities
+|   |           agenda-profesional.entity.ts
+|   |           
+|   +---descansos
+|   |   |   descanso.controller.ts
+|   |   |   descanso.service.ts
+|   |   |   descansos.module.ts
+|   |   |   
+|   |   +---dto
+|   |   |       create-descanso.dto.ts
+|   |   |       descanso-response.dto.ts
+|   |   |       update-descanso.dto.ts
+|   |   |       
+|   |   \---entities
+|   |           descanso.entity.ts
+|   |           
+|   +---jornadas-diarias
+|   |   |   jornada-diaria.controller.ts
+|   |   |   jornada-diaria.service.ts
+|   |   |   jornadas-diarias.module.ts
+|   |   |   
+|   |   +---dto
+|   |   |       create-jornada-diaria.dto.ts
+|   |   |       update-jornada-diaria.dto.ts
+|   |   |       
+|   |   \---entities
+|   |           jornada-diaria.entity.ts
+|   |           
+|   \---slots-disponibilidad
+|       |   slot-disponibilidad.controller.ts
+|       |   slot-disponibilidad.service.ts
+|       |   slots-disponibilidad.module.ts
+|       |   
+|       +---dto
+|       |       create-slot-disponibilidad.dto.ts
+|       |       generate-slots.dto.ts
+|       |       update-slot-disponibilidad.dto.ts
+|       |       
+|       \---entities
+|               slot-disponibilidad.entity.ts
+|               
++---auth
+|   |   auth.controller.ts
+|   |   auth.module.ts
+|   |   auth.service.ts
+|   |   jwt-auth.guard.ts
+|   |   jwt.strategy.ts
+|   |   local-auth.guard.ts
+|   |   local.strategy.ts
+|   |   
+|   +---dto
+|   |       jwt-payload-response.dto.ts
+|   |       login.dto.ts
+|   |       
+|   \---interfaces
+|           jwt-payload.interface.ts
+|           
++---centros-de-salud
+|   |   centros-de-salud.controller.ts
+|   |   centros-de-salud.module.ts
+|   |   centros-de-salud.service.ts
+|   |   
+|   +---dto
+|   |       centro-de-salud-response.dto.ts
+|   |       create-centro-de-salud.dto.ts
+|   |       
+|   \---entities
+|           centro-de-salud.entity.ts
+|           
++---citas
+|   |   citas.controller.ts
+|   |   citas.module.ts
+|   |   citas.service.ts
+|   |   
+|   +---dto
+|   |       cita-response.dto.ts
+|   |       create-cita.dto.ts
+|   |       update-cita.dto.ts
+|   |       
+|   \---entities
+|           cita.entity.ts
+|           
++---common
+|   |   common.module.ts
+|   |   
+|   +---constants
+|   |       domain.constants.ts
+|   |       
+|   +---decorators
+|   |       api-operations.decorator.ts
+|   |       api-responses.decorator.ts
+|   |       roles.decorator.ts
+|   |       
+|   \---guards
+|           roles.guard.ts
+|           
++---config
+|       swagger.config.ts
+|       
++---database
+|       database.module.ts
+|       
++---historiales-medicos
+|   \---entities
+|           historial-medico-electronico.entity.ts
+|           
++---migrations
+|       1754871728169-CreateServiciosTable.ts
+|       1754953302662-CreateProfesionalServiciosTable.ts
+|       1755991638038-RemoveIdCitaFromSlotDisponibilidad.ts
+|       1755992138064-AdjustJornadaDiariaUniqueConstraint.ts
+|       1756074609897-change_jornada_diaria_fecha_to_timestamp.ts
+|       1756144459472-agrega_eager_to_slot_cita_relation.ts
+|       
++---pacientes
+|   |   pacientes.controller.ts
+|   |   pacientes.module.ts
+|   |   pacientes.service.ts
+|   |   
+|   +---dto
+|   |       create-paciente.dto.ts
+|   |       paciente-response.dto.ts
+|   |       update-paciente.dto.ts
+|   |       
+|   \---entities
+|           paciente.entity.ts
+|           
++---profesional-servicios
+|   |   profesional-servicios.controller.ts
+|   |   profesional-servicios.module.ts
+|   |   profesional-servicios.service.ts
+|   |   
+|   +---dto
+|   |       create-profesional-servicio.dto.ts
+|   |       profesional-servicio-response.dto.ts
+|   |       
+|   \---entities
+|           profesional-servicio.entity.ts
+|           
++---profesionales
+|   |   profesionales.controller.ts
+|   |   profesionales.module.ts
+|   |   profesionales.service.ts
+|   |   
+|   +---dto
+|   |       create-profesional.dto.ts
+|   |       profesional-response.dto.ts
+|   |       update-profesional.dto.ts
+|   |       
+|   \---entities
+|           profesional.entity.ts
+|           
++---roles
+|   |   roles.controller.ts
+|   |   roles.module.ts
+|   |   roles.service.ts
+|   |   
+|   +---dto
+|   |       create-rol.dto.ts
+|   |       rol-response.dto.ts
+|   |       
+|   \---entities
+|           rol.entity.ts
+|           
++---servicios
+|   |   servicios.controller.ts
+|   |   servicios.module.ts
+|   |   servicios.service.ts
+|   |   
+|   +---dto
+|   |       create-servicio.dto.ts
+|   |       servicio-response.dto.ts
+|   |       update-servicio.dto.ts
+|   |       
+|   \---entities
+|           servicio.entity.ts
+|           
+\---usuarios
+    |   usuarios.controller.ts
+    |   usuarios.module.ts
+    |   usuarios.service.ts
+    |   
+    +---dto
+    |       create-usuario.dto.ts
+    |       update-usuario.dto.ts
+    |       usuario-response.dto.ts
+    |       
+    \---entities
+            usuario.entity.ts
+            
