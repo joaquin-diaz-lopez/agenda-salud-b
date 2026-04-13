@@ -179,6 +179,27 @@ export class ProfesionalesService {
   }
 
   /**
+   * Elimina un profesional de la base de datos.
+   * @param id El ID del profesional a eliminar.
+   * @throws NotFoundException Si el profesional no existe.
+   */
+  async elimina(id: string): Promise<void> {
+    const profesional = await this.findOne(id);
+
+    if (!profesional) {
+      throw new NotFoundException(
+        `Profesional con ID '${id}' no encontrado para eliminar.`,
+      );
+    }
+
+    // Nota: Gracias a la integridad referencial de SQL,
+    // si tienes configurado onDelete: 'CASCADE' en la tabla intermedia,
+    // se borrarán sus servicios automáticamente. Si no, TypeORM fallará
+    // protegiendo los datos.
+    await this.profesionalesRepository.remove(profesional);
+  }
+
+  /**
    * Verifica si un profesional específico ofrece un servicio particular.
    * @param idProfesional El ID del profesional.
    * @param idServicio El ID del servicio.

@@ -1,14 +1,14 @@
-// src/profesional-servicios/profesional-servicios.controller.ts (Corregido)
+// src/profesional-servicios/profesional-servicios.controller.ts
 import {
   Controller,
   Post,
   Body,
   Get,
   Param,
+  Delete,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-// Asegúrate de importar ApiParam
 import {
   ApiTags,
   ApiBody,
@@ -22,7 +22,6 @@ import { ProfesionalServicio } from './entities/profesional-servicio.entity';
 import {
   ApiCreateOperation,
   ApiFindAllOperation,
-  ApiFindOneOperation,
 } from '../common/decorators/api-operations.decorator';
 import { ProfesionalServicioResponseDto } from './dto/profesional-servicio-response.dto';
 
@@ -38,28 +37,8 @@ export class ProfesionalServiciosController {
   @ApiCreateOperation(
     ProfesionalServicio,
     'Crea una nueva asociación entre un profesional y un servicio',
-    ProfesionalServicioResponseDto, // <-- ¡Uso del DTO de Respuesta!
+    ProfesionalServicioResponseDto,
   )
-  @ApiBody({
-    type: CreateProfesionalServicioDto,
-    description: 'IDs del profesional y el servicio para crear la asociación.',
-    examples: {
-      ejemplo1: {
-        value: {
-          idProfesional: '123e4567-e89b-12d3-a456-426614174000',
-          idServicio: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d',
-        },
-        description: 'Crea una nueva asociación válida.',
-      },
-    },
-  })
-  @ApiNotFoundResponse({
-    description: 'El Profesional o el Servicio proporcionado no existe.',
-  })
-  @ApiResponse({
-    status: HttpStatus.CONFLICT, // 409
-    description: 'La asociación entre el profesional y el servicio ya existe.',
-  })
   async create(
     @Body() createProfesionalServicioDto: CreateProfesionalServicioDto,
   ): Promise<ProfesionalServicio> {
@@ -69,30 +48,27 @@ export class ProfesionalServiciosController {
   }
 
   @Get()
-  @HttpCode(HttpStatus.OK)
   @ApiFindAllOperation(
     ProfesionalServicio,
-    'Obtiene todas las asociaciones entre profesionales y servicios',
+    'Obtiene todas las asociaciones',
     ProfesionalServicioResponseDto,
   )
   async findAll(): Promise<ProfesionalServicio[]> {
     return this.profesionalServiciosService.findAll();
   }
 
-  @Get(':id')
-  @HttpCode(HttpStatus.OK)
-  @ApiFindOneOperation(
-    ProfesionalServicio,
-    'Obtiene una asociación por su ID',
-    ProfesionalServicioResponseDto,
-  )
-  @ApiParam({
-    // <-- Documentación del parámetro de ruta
-    name: 'id',
-    description: 'ID (UUID) de la asociación ProfesionalServicio.',
-    example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
-  })
-  async findOne(@Param('id') id: string): Promise<ProfesionalServicio | null> {
-    return this.profesionalServiciosService.findOne(id);
+  // --- NUEVO: Obtener servicios de un profesional específico ---
+  @Get('profesional/:idProfesional')
+  @ApiParam({ name: 'idProfesional', description: 'UUID del profesional' })
+  async findByProfesional(@Param('idProfesional') idProfesional: string) {
+    return this.profesionalServiciosService.findByProfesional(idProfesional);
+  }
+
+  // --- NUEVO: Eliminar una asociación (Desvincular) ---
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiParam({ name: 'id', description: 'ID de la asociación a eliminar' })
+  async remove(@Param('id') id: string) {
+    return this.profesionalServiciosService.remove(id);
   }
 }

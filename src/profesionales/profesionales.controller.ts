@@ -6,49 +6,55 @@ import {
   Get,
   Param,
   Patch,
+  Delete,
   UseGuards,
   Request,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { ProfesionalesService } from './profesionales.service';
 import { CreateProfesionalDto } from './dto/create-profesional.dto';
 import { UpdateProfesionalDto } from './dto/update-profesional.dto';
 import { Profesional } from './entities/profesional.entity';
 import { Request as ExpressRequest } from 'express';
-// --- NUEVAS IMPORTACIONES PARA EL CONTROL DE ACCESO y SWAGGER ---
-import { JwtAuthGuard } from '../auth/jwt-auth.guard'; // Para asegurar que el usuario esté autenticado
+
+// --- CONTROL DE ACCESO y SWAGGER ---
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from 'src/auth/interfaces/jwt-payload.interface';
-import { RolesGuard } from '../common/guards/roles.guard'; // Tu guard de roles personalizado
-import { Roles } from '../common/decorators/roles.decorator'; // Tu decorador de roles personalizado
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import {
   ApiCreateOperation,
   ApiFindAllOperation,
   ApiFindOneOperation,
   ApiUpdateOperation,
 } from '../common/decorators/api-operations.decorator';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
+
 interface CustomRequest extends ExpressRequest {
   user: JwtPayload;
 }
-/**
- * Controlador para la gestión de Profesionales.
- * Expone los endpoints HTTP para realizar operaciones CRUD básicas sobre los profesionales.
- */
+
 @ApiTags('Profesionales')
-//@ApiBearerAuth() // Indica que este controlador requiere un token JWT para acceder a sus rutas
+@ApiBearerAuth() // Activado para que Swagger pida el token
 @Controller('profesionales')
-//@UseGuards(JwtAuthGuard, RolesGuard) // Aplica JwtAuthGuard y RolesGuard a TODAS las rutas de este controlador
+// Puedes descomentar la siguiente línea si quieres proteger TODO el controlador
+// @UseGuards(JwtAuthGuard, RolesGuard)
 export class ProfesionalesController {
   constructor(private readonly profesionalesService: ProfesionalesService) {}
 
   /**
    * Crea un nuevo profesional.
-   * SOLO ACCESIBLE para roles 'Administrador' o 'Profesional'.
-   * @param createProfesionalDto El DTO con los datos para crear el profesional.
-   * @returns El profesional recién creado.
    */
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('Administrador') // Solo admin suele crear perfiles de personal
   @ApiCreateOperation(Profesional, 'Crea un nuevo profesional')
-  //@Roles('Administrador', 'Profesional') // <-- ¡Aquí usamos tu decorador!
   async create(
     @Body() createProfesionalDto: CreateProfesionalDto,
   ): Promise<Profesional> {
@@ -57,34 +63,23 @@ export class ProfesionalesController {
 
   /**
    * Obtiene todos los profesionales.
-   * Accesible para todos los usuarios autenticados (no requiere roles específicos más allá del JWT).
-   * @returns Un array de todos los profesionales.
    */
   @Get()
   @ApiFindAllOperation(Profesional, 'Obtiene todos los profesionales')
-  // No se especifica @Roles aquí, por lo que RolesGuard no restringirá por roles para este método.
-  // Sin embargo, JwtAuthGuard sigue protegiéndolo.
   async findAll(): Promise<Profesional[]> {
     return this.profesionalesService.findAll();
   }
 
+  /**
+   * Endpoint para obtener el perfil del usuario logueado.
+   */
   @UseGuards(JwtAuthGuard)
   @Get('me')
+  @ApiOperation({ summary: 'Obtiene los datos del perfil logueado' })
   me(@Request() req: CustomRequest) {
-    // 👈 Usamos @Request para acceder al usuario inyectado
-    // El payload del JWT (ej: { usuarioId: 1, rol: 'profesional', iat: ..., exp: ... })
-    // es inyectado en req.user por el JwtAuthGuard.
-
-    console.log('Datos del usuario autenticado:', req.user);
-
-    // DEBE RETORNAR UN OBJETO JSON VÁLIDO
     return {
-      // Mapeamos 'sub' a 'usuarioId' para el Frontend
       usuarioId: req.user.sub,
-
-      // Mapeamos 'nombreRol' a 'rol' para el Frontend
       rol: req.user.nombreRol,
-
       nombreUsuario: req.user.nombreUsuario,
       mensaje: 'Acceso y token válidos.',
     };
@@ -92,9 +87,6 @@ export class ProfesionalesController {
 
   /**
    * Obtiene un profesional específico por su ID.
-   * Accesible para todos los usuarios autenticados.
-   * @param id El ID (UUID) del profesional a buscar.
-   * @returns El profesional encontrado o null.
    */
   @Get(':id')
   @ApiFindOneOperation(Profesional, 'Obtiene un profesional por su ID')
@@ -104,18 +96,33 @@ export class ProfesionalesController {
 
   /**
    * Actualiza parcialmente un profesional existente.
-   * SOLO ACCESIBLE para roles 'Administrador' o 'Profesional'.
-   * @param id El ID del profesional a actualizar.
-   * @param updateProfesionalDto El DTO con los datos parciales para actualizar.
-   * @returns El objeto Profesional actualizado.
    */
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('Administrador', 'Profesional')
   @ApiUpdateOperation(Profesional, 'Actualiza un profesional existente')
-  @Roles('Administrador', 'Profesional') // <-- Aquí usamos tu decorador!
   async actualiza(
     @Param('id') id: string,
     @Body() updateProfesionalDto: UpdateProfesionalDto,
   ): Promise<Profesional> {
     return await this.profesionalesService.actualiza(id, updateProfesionalDto);
+  }
+
+  /**
+   * Elimina un profesional de la base de datos.
+   * NUEVO ENDPOINT.
+   */
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('Administrador')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Elimina un profesional por su ID' })
+  @ApiResponse({
+    status: 204,
+    description: 'Profesional eliminado correctamente',
+  })
+  @ApiResponse({ status: 404, description: 'Profesional no encontrado' })
+  async elimina(@Param('id') id: string): Promise<void> {
+    return await this.profesionalesService.elimina(id);
   }
 }
