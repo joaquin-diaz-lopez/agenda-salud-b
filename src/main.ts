@@ -1,8 +1,8 @@
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { setupSwagger } from './config/swagger.config';
 import { ConfigService } from '@nestjs/config';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 import * as express from 'express';
 
 async function bootstrap() {
@@ -23,6 +23,11 @@ async function bootstrap() {
   // --- ¡AÑADE ESTA LÍNEA PARA HABILITAR EL PARSEO DE JSON EXPLÍCITAMENTE! ---
   app.use(express.json()); // Habilita el middleware para parsear cuerpos JSON
   // --- FIN DE LA ADICIÓN ---
+
+  // --- 🔥 LÍNEA NUEVA PARA ELIMINAR CIRCULARIDAD ---
+  // Esto permite que el decorador @Exclude() funcione en las entidades
+  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
+  // ------------------------------------------------
 
   // --- ¡LÍNEA PARA HABILITAR EL VALIDATIONPIPE GLOBALMENTE! ---
   app.useGlobalPipes(

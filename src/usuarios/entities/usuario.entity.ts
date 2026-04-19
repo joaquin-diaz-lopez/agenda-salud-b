@@ -11,6 +11,7 @@ import { Rol } from '../../roles/entities/rol.entity';
 import { Profesional } from '../../profesionales/entities/profesional.entity';
 import { Paciente } from '../../pacientes/entities/paciente.entity';
 import { ApiProperty } from '@nestjs/swagger';
+import { Exclude } from 'class-transformer';
 
 @Entity('usuarios')
 export class Usuario {
@@ -48,8 +49,10 @@ export class Usuario {
   @OneToOne(() => Profesional, (profesional) => profesional.usuario, {
     nullable: true,
   })
+  @Exclude({ toPlainOnly: true })
   profesional: Profesional | null;
 
   @OneToOne(() => Paciente, (paciente) => paciente.usuario, { nullable: true })
+  @Exclude({ toPlainOnly: true })
   paciente: Paciente | null;
 }

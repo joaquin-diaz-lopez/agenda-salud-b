@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import { Usuario } from './entities/usuario.entity';
 import { CreateUsuarioDto } from './dto/create-usuario.dto'; // Necesitarás crear este DTO
 import * as bcrypt from 'bcrypt';
@@ -94,6 +94,20 @@ export class UsuariosService {
   }
 
   // Puedes añadir otros métodos CRUD aquí (findAll, findOne, update, remove)
+
+  /**
+   * 🚨 NUEVO MÉTODO: Busca usuarios con rol PACIENTE que NO tengan un registro de paciente asociado.
+   * Filtra por el nombre del rol y la nulidad de la relación inversa.
+   */
+  async buscarDisponiblesParaPaciente(): Promise<Usuario[]> {
+    return this.usuariosRepository.find({
+      where: {
+        rol: { nombre: 'PACIENTE' }, // Filtra por nombre de rol
+        paciente: { id: IsNull() }, // Filtra los que no tienen paciente vinculado
+      },
+      relations: ['rol'], // Solo cargamos el rol para validación visual en el front
+    });
+  }
 
   /**
    * Guarda una instancia de Usuario.
