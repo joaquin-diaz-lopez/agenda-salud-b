@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Between, Repository } from 'typeorm';
 import { SlotDisponibilidad } from './entities/slot-disponibilidad.entity';
 import { CreateSlotDisponibilidadDto } from './dto/create-slot-disponibilidad.dto';
 import { UpdateSlotDisponibilidadDto } from './dto/update-slot-disponibilidad.dto';
@@ -26,6 +26,14 @@ export class SlotDisponibilidadService {
     private jornadaDiariaService: JornadaDiariaService,
     private descansoService: DescansoService,
   ) {}
+
+  // Define  relación estándar para no repetirlas
+  private readonly standardRelations = [
+    'jornadaDiaria',
+    'cita',
+    'cita.paciente',
+    'descanso',
+  ];
 
   /**
    * Genera slots de disponibilidad para una jornada diaria específica.
@@ -48,72 +56,48 @@ export class SlotDisponibilidadService {
     }
 
     const jornada = await this.jornadaDiariaService.findOne(idJornadaDiaria);
-    if (!jornada) {
-      throw new NotFoundException(
-        `Jornada Diaria con ID '${idJornadaDiaria}' no encontrada.`,
-      );
-    }
+    if (!jornada) throw new NotFoundException('Jornada no encontrada');
 
-    const jornadaDateFromEntity = new Date(jornada.fecha);
-
-    // Cargar los descansos asociados a esta jornada
     const descansos =
       await this.descansoService.findByJornadaDiariaId(idJornadaDiaria);
 
+    // Normalización de Fecha: Extraer YYYY-MM-DD sin ruido de zona horaria
+    const fechaString = new Date(jornada.fecha).toISOString().split('T')[0];
+
+    // Construir fechas de inicio y fin combinando la fecha del día con el string de hora
+    const inicioJornada = new Date(
+      `${fechaString}T${jornada.horaInicioTrabajo}`,
+    );
+    const finJornada = new Date(`${fechaString}T${jornada.horaFinTrabajo}`);
+
     const generatedSlots: SlotDisponibilidad[] = [];
-
-    const jornadaFecha = jornadaDateFromEntity;
-
-    const [hInicioJ, mInicioJ] = jornada.horaInicioTrabajo
-      .split(':')
-      .map(Number);
-    const [hFinJ, mFinJ] = jornada.horaFinTrabajo.split(':').map(Number);
-
-    const inicioJornada = new Date(jornadaFecha);
-    inicioJornada.setUTCHours(hInicioJ, mInicioJ, 0, 0);
-
-    const finJornada = new Date(jornadaFecha);
-    finJornada.setUTCHours(hFinJ, mFinJ, 0, 0);
-
-    let currentTime = inicioJornada;
-    let slotCount = 0;
+    let currentTime = new Date(inicioJornada);
 
     while (currentTime < finJornada) {
       const slotEndTime = new Date(
         currentTime.getTime() + duracionSlotMinutos * 60 * 1000,
       );
 
-      // Si el slot excede el fin de la jornada, ajustar o ignorar
-      if (slotEndTime > finJornada) {
-        break;
-      }
+      if (slotEndTime > finJornada) break;
 
-      // Verificar si el slot se superpone con algún descanso
-      let isOverlappingWithBreak = false;
-      for (const descanso of descansos) {
-        if (
-          currentTime < descanso.horaFin &&
-          slotEndTime > descanso.horaInicio
-        ) {
-          isOverlappingWithBreak = true;
-          break;
-        }
-      }
+      const isOverlappingWithBreak = descansos.some((descanso) => {
+        const dInicio = new Date(descanso.horaInicio);
+        const dFin = new Date(descanso.horaFin);
+        return currentTime < dFin && slotEndTime > dInicio;
+      });
 
       if (!isOverlappingWithBreak) {
-        const newSlot = this.slotDisponibilidadRepository.create({
-          jornadaDiaria: jornada,
-          idJornadaDiaria: jornada.id,
-          horaInicio: currentTime,
-          horaFin: slotEndTime,
-          estaReservado: false,
-          estaBloqueado: false,
-        });
-        generatedSlots.push(newSlot);
+        generatedSlots.push(
+          this.slotDisponibilidadRepository.create({
+            idJornadaDiaria: jornada.id,
+            horaInicio: new Date(currentTime),
+            horaFin: new Date(slotEndTime),
+            estaReservado: false,
+            estaBloqueado: false,
+          }),
+        );
       }
-
-      currentTime = slotEndTime;
-      slotCount++;
+      currentTime = new Date(slotEndTime);
     }
 
     return this.slotDisponibilidadRepository.save(generatedSlots);
@@ -154,7 +138,7 @@ export class SlotDisponibilidadService {
    */
   async findAll(): Promise<SlotDisponibilidad[]> {
     return this.slotDisponibilidadRepository.find({
-      relations: ['jornadaDiaria', 'cita', 'descanso'],
+      relations: this.standardRelations,
     });
   }
 
@@ -167,7 +151,25 @@ export class SlotDisponibilidadService {
   async findOne(id: string): Promise<SlotDisponibilidad | null> {
     return this.slotDisponibilidadRepository.findOne({
       where: { id },
-      relations: ['jornadaDiaria', 'cita', 'descanso'],
+      relations: this.standardRelations,
+    });
+  }
+
+  // Agregar a SlotDisponibilidadService
+  async findByProfesionalAndRange(
+    idProfesional: string,
+    inicio: Date,
+    fin: Date,
+  ) {
+    return this.slotDisponibilidadRepository.find({
+      where: {
+        jornadaDiaria: {
+          agendaProfesional: { idProfesional },
+          fecha: Between(inicio, fin),
+        },
+      },
+      relations: this.standardRelations,
+      order: { horaInicio: 'ASC' },
     });
   }
 
@@ -185,7 +187,7 @@ export class SlotDisponibilidadService {
   ): Promise<SlotDisponibilidad> {
     const slotToUpdate = await this.slotDisponibilidadRepository.findOne({
       where: { id },
-      relations: ['jornadaDiaria', 'cita', 'descanso'], // Cargar relaciones relevantes
+      relations: this.standardRelations,
     });
 
     if (!slotToUpdate) {

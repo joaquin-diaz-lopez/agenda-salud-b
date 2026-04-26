@@ -125,4 +125,11 @@ export class ProfesionalesController {
   async elimina(@Param('id') id: string): Promise<void> {
     return await this.profesionalesService.elimina(id);
   }
+
+  // Se usó para crear la Agenda-profesional de los profesionales que se registraron
+  // antes de que se automatizara la creación de la Agenda al registrar el Profesional.
+  //  @Post('reparar-agendas')
+  //  async reparar() {
+  //    return await this.profesionalesService.repararAgendasFaltantes();
+  //  }
 }

@@ -101,29 +101,24 @@ export class JornadaDiariaService {
   }
 
   /**
-   * Busca una jornada diaria por su ID.
-   * Carga la relación 'agendaProfesional'.
-   * @param id El ID de la jornada a buscar.
-   * @returns La JornadaDiaria si se encuentra, o null.
+   * Busca una jornada diaria por su ID e incluye sus slots para saber si está vacía.
    */
   async findOne(id: string): Promise<JornadaDiaria | null> {
     return this.jornadaDiariaRepository.findOne({
       where: { id },
-      relations: ['agendaProfesional'],
+      relations: ['agendaProfesional', 'slotsDisponibilidad'], // <-- Agregamos slotsDisponibilidad
     });
   }
 
   /**
-   * Busca jornadas diarias por el ID de una agenda profesional.
-   * @param idAgendaProfesional El ID de la agenda profesional.
-   * @returns Un array de JornadaDiaria.
+   * Busca jornadas por Agenda, útil para el calendario.
    */
   async findByAgendaProfesionalId(
     idAgendaProfesional: string,
   ): Promise<JornadaDiaria[]> {
     return this.jornadaDiariaRepository.find({
       where: { idAgendaProfesional },
-      relations: ['agendaProfesional'],
+      relations: ['agendaProfesional', 'slotsDisponibilidad'], // <-- Importante para el UI
     });
   }
 

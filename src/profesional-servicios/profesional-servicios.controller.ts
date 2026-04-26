@@ -8,14 +8,9 @@ import {
   Delete,
   HttpCode,
   HttpStatus,
+  ParseUUIDPipe,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiBody,
-  ApiResponse,
-  ApiParam,
-  ApiNotFoundResponse,
-} from '@nestjs/swagger';
+import { ApiTags, ApiParam, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ProfesionalServiciosService } from './profesional-servicios.service';
 import { CreateProfesionalServicioDto } from './dto/create-profesional-servicio.dto';
 import { ProfesionalServicio } from './entities/profesional-servicio.entity';
@@ -57,18 +52,45 @@ export class ProfesionalServiciosController {
     return this.profesionalServiciosService.findAll();
   }
 
-  // --- NUEVO: Obtener servicios de un profesional específico ---
+  // --- REFACTORIZADO: Obtener servicios de un profesional específico ---
   @Get('profesional/:idProfesional')
-  @ApiParam({ name: 'idProfesional', description: 'UUID del profesional' })
-  async findByProfesional(@Param('idProfesional') idProfesional: string) {
+  @ApiOperation({
+    summary: 'Obtiene todos los servicios que ofrece un profesional específico',
+  })
+  @ApiParam({
+    name: 'idProfesional',
+    description: 'UUID del profesional',
+    example: 'b1c2d3e4-f5a6-7890-1234-567890abcdef',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Lista de servicios del profesional recuperada con éxito.',
+    type: ProfesionalServicio,
+    isArray: true,
+  })
+  async findByProfesional(
+    @Param('idProfesional', ParseUUIDPipe) idProfesional: string,
+  ): Promise<ProfesionalServicio[]> {
     return this.profesionalServiciosService.findByProfesional(idProfesional);
   }
 
-  // --- NUEVO: Eliminar una asociación (Desvincular) ---
+  // --- REFACTORIZADO: Eliminar una asociación (Desvincular) ---
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiParam({ name: 'id', description: 'ID de la asociación a eliminar' })
-  async remove(@Param('id') id: string) {
+  @ApiOperation({
+    summary:
+      'Elimina una asociación (desvincula un servicio de un profesional)',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID (UUID) de la asociación a eliminar',
+    example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
+  })
+  @ApiResponse({
+    status: HttpStatus.NO_CONTENT,
+    description: 'La asociación ha sido eliminada con éxito.',
+  })
+  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.profesionalServiciosService.remove(id);
   }
 }

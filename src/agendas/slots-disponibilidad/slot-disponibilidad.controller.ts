@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Patch,
+  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -148,6 +149,30 @@ export class SlotDisponibilidadController {
     return await this.slotDisponibilidadService.actualiza(
       id,
       updateSlotDisponibilidadDto,
+    );
+  }
+
+  @Get('profesional/:idProfesional')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Obtiene slots filtrados por profesional y rango' })
+  @ApiParam({ name: 'idProfesional', description: 'ID del profesional' })
+  async findByProfesional(
+    @Param('idProfesional') idProfesional: string,
+    @Query('inicio') inicio?: string,
+    @Query('fin') fin?: string,
+  ) {
+    // Si no vienen fechas, podemos definir un rango por defecto (ej. hoy +/- 30 días)
+    // o manejarlo directamente en el servicio.
+    const start = inicio ? new Date(inicio) : new Date();
+    const end = fin ? new Date(fin) : new Date();
+
+    // Si no se envió fin, le damos un margen de un mes
+    if (!fin) end.setMonth(end.getMonth() + 1);
+
+    return this.slotDisponibilidadService.findByProfesionalAndRange(
+      idProfesional,
+      start,
+      end,
     );
   }
 }

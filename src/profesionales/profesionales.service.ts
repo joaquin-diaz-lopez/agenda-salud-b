@@ -5,129 +5,141 @@ import {
   NotFoundException,
   Inject,
   forwardRef,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm'; // Importamos DataSource para transacciones
 import { Profesional } from './entities/profesional.entity';
 import { CreateProfesionalDto } from './dto/create-profesional.dto';
 import { UsuariosService } from '../usuarios/usuarios.service';
 import { CentroDeSalud } from '../centros-de-salud/entities/centro-de-salud.entity';
 import { Usuario } from '../usuarios/entities/usuario.entity';
 import { UpdateProfesionalDto } from './dto/update-profesional.dto';
-import { ProfesionalServiciosService } from '../profesional-servicios/profesional-servicios.service'; // ¡NUEVO!
+import { ProfesionalServiciosService } from '../profesional-servicios/profesional-servicios.service';
+import { AgendaProfesional } from '../agendas/agendas-profesional/entities/agenda-profesional.entity';
 
 @Injectable()
 export class ProfesionalesService {
+  private readonly logger = new Logger(ProfesionalesService.name);
+
   constructor(
     @InjectRepository(Profesional)
     private profesionalesRepository: Repository<Profesional>,
+    @InjectRepository(AgendaProfesional)
+    private agendaRepository: Repository<AgendaProfesional>,
     private usuariosService: UsuariosService,
     @InjectRepository(CentroDeSalud)
     private centroDeSaludRepository: Repository<CentroDeSalud>,
     @Inject(forwardRef(() => ProfesionalServiciosService))
     private profesionalServiciosService: ProfesionalServiciosService,
+    private dataSource: DataSource, // Inyectamos para la transacción
   ) {}
 
   async create(
     createProfesionalDto: CreateProfesionalDto,
   ): Promise<Profesional> {
-    // Desestructuración con tipos explícitos para mayor seguridad y claridad para ESLint
-    const {
-      idUsuario,
-      email,
-      nombre,
-      apellido,
-      especialidad,
-      telefono,
-      idCentroDeSalud,
-    } = createProfesionalDto;
+    const { idUsuario, email, idCentroDeSalud } = createProfesionalDto;
 
-    // 1. Verificar si el usuario asociado existe y no está ya asociado a un profesional
-    const usuario: Usuario | null =
-      await this.usuariosService.buscarPorId(idUsuario);
-
-    if (!usuario) {
+    // 1. Validaciones previas
+    const usuario = await this.usuariosService.buscarPorId(idUsuario);
+    if (!usuario)
       throw new NotFoundException(
         `Usuario con ID '${idUsuario}' no encontrado.`,
       );
-    }
-
-    // AHORA `usuario.profesional` es de tipo `Profesional | null` gracias a la corrección en Usuario.entity.ts
-    if (usuario.profesional) {
+    if (usuario.profesional)
       throw new ConflictException(
-        `El usuario con ID '${idUsuario}' ya está asociado a otro profesional.`,
+        `El usuario ya está asociado a otro profesional.`,
       );
-    }
 
-    // 2. Verificar si el email ya está en uso por otro profesional
     const emailExistente = await this.profesionalesRepository.findOne({
       where: { email },
     });
-    if (emailExistente) {
-      throw new ConflictException(
-        `El email '${email}' ya está en uso por otro profesional.`,
-      );
-    }
+    if (emailExistente)
+      throw new ConflictException(`El email '${email}' ya está en uso.`);
 
-    // 3. Si se provee idCentroDeSalud, verificar si el centro de salud existe
     if (idCentroDeSalud) {
-      const centroDeSalud = await this.centroDeSaludRepository.findOne({
+      const centro = await this.centroDeSaludRepository.findOne({
         where: { id: idCentroDeSalud },
       });
-      if (!centroDeSalud) {
-        throw new NotFoundException(
-          `Centro de Salud con ID '${idCentroDeSalud}' no encontrado.`,
-        );
-      }
+      if (!centro)
+        throw new NotFoundException(`Centro de Salud no encontrado.`);
     }
 
-    // 4. Crear una nueva instancia de la entidad Profesional
-    const nuevoProfesional =
-      this.profesionalesRepository.create(createProfesionalDto);
+    // 2. Ejecución en Transacción (Crear Profesional + Agenda)
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    // 5. Guardar el nuevo profesional en la base de datos
-    return this.profesionalesRepository.save(nuevoProfesional);
+    try {
+      const nuevoProfesional =
+        this.profesionalesRepository.create(createProfesionalDto);
+      const profesionalGuardado =
+        await queryRunner.manager.save(nuevoProfesional);
+
+      const nuevaAgenda = this.agendaRepository.create({
+        idProfesional: profesionalGuardado.id,
+        nombre: `Agenda de ${profesionalGuardado.nombre} ${profesionalGuardado.apellido}`,
+      });
+      await queryRunner.manager.save(nuevaAgenda);
+
+      await queryRunner.commitTransaction();
+
+      // Retornamos con la agenda cargada
+      return this.findOne(profesionalGuardado.id) as Promise<Profesional>;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // --- MÉTODO DE REPARACIÓN PARA PROFESIONALES EXISTENTES ---
+  async repararAgendasFaltantes(): Promise<{
+    procesados: number;
+    creadas: number;
+  }> {
+    const profesionalesSinAgenda = await this.profesionalesRepository
+      .createQueryBuilder('profesional')
+      .leftJoin('profesional.agenda', 'agenda')
+      .where('agenda.id IS NULL')
+      .getMany();
+
+    let creadas = 0;
+    for (const prof of profesionalesSinAgenda) {
+      const nuevaAgenda = this.agendaRepository.create({
+        idProfesional: prof.id,
+        nombre: `Agenda de ${prof.nombre} ${prof.apellido}`,
+      });
+      await this.agendaRepository.save(nuevaAgenda);
+      creadas++;
+    }
+
+    this.logger.log(`Reparación completada. Se crearon ${creadas} agendas.`);
+    return { procesados: profesionalesSinAgenda.length, creadas };
   }
 
   async findAll(): Promise<Profesional[]> {
     return this.profesionalesRepository.find({
-      relations: ['usuario', 'centroDeSalud'],
+      relations: ['usuario', 'centroDeSalud', 'agenda'],
     });
   }
 
   async findOne(id: string): Promise<Profesional | null> {
     return this.profesionalesRepository.findOne({
       where: { id },
-      relations: ['usuario', 'centroDeSalud'],
+      relations: ['usuario', 'centroDeSalud', 'agenda'], // Añadida 'agenda' aquí también
     });
   }
 
-  /**
-   * Actualiza parcialmente un profesional existente utilizando el método save().
-   * Realiza validaciones para asegurar la existencia del profesional y evitar conflictos de email.
-   * @param id El ID del profesional a actualizar.
-   * @param updateProfesionalDto El DTO con los datos parciales para actualizar.
-   * @returns El objeto Profesional actualizado.
-   * @throws NotFoundException Si el profesional no se encuentra.
-   * @throws ConflictException Si el email (si se actualiza) ya está en uso por otro profesional.
-   */
   async actualiza(
     id: string,
     updateProfesionalDto: UpdateProfesionalDto,
   ): Promise<Profesional> {
-    const profesionalToUpdate = await this.profesionalesRepository.findOne({
-      where: { id },
-      relations: ['usuario', 'centroDeSalud'],
-    });
+    const profesionalToUpdate = await this.findOne(id);
+    if (!profesionalToUpdate)
+      throw new NotFoundException(`Profesional no encontrado.`);
 
-    if (!profesionalToUpdate) {
-      throw new NotFoundException(
-        `Profesional con ID '${id}' no encontrado para actualizar.`,
-      );
-    }
-
-    // Si se intenta actualizar el email, verificar que no esté ya en uso por otro profesional
-    // Verifica si el email está presente en el DTO de actualización Y es diferente al actual del profesional
     if (
       updateProfesionalDto.email &&
       updateProfesionalDto.email !== profesionalToUpdate.email
@@ -135,86 +147,46 @@ export class ProfesionalesService {
       const emailEnUso = await this.profesionalesRepository.findOne({
         where: { email: updateProfesionalDto.email },
       });
-      // Si se encuentra un profesional con ese email Y su ID es diferente al que estamos actualizando
-      if (emailEnUso && emailEnUso.id !== id) {
-        throw new ConflictException(
-          `El email '${updateProfesionalDto.email}' ya está en uso por otro profesional.`,
-        );
-      }
+      if (emailEnUso && emailEnUso.id !== id)
+        throw new ConflictException(`Email ya en uso.`);
     }
 
-    // Si se proporciona un nuevo idUsuario para la actualización
     if (
       updateProfesionalDto.idUsuario &&
       updateProfesionalDto.idUsuario !== profesionalToUpdate.idUsuario
     ) {
-      // Busca el nuevo usuario por su ID para asegurar su existencia y crear la relación
       const nuevoUsuario = await this.usuariosService.buscarPorId(
         updateProfesionalDto.idUsuario,
       );
-      if (!nuevoUsuario) {
-        throw new NotFoundException(
-          `Usuario con ID '${updateProfesionalDto.idUsuario}' no encontrado.`,
-        );
-      }
-      // Verifica si el usuario ya está asociado a otro profesional (que no sea el actual que estamos modificando)
-      if (nuevoUsuario.profesional && nuevoUsuario.profesional.id !== id) {
-        throw new ConflictException(
-          `El usuario con ID '${updateProfesionalDto.idUsuario}' ya está asociado a otro profesional.`,
-        );
-      }
+      if (!nuevoUsuario) throw new NotFoundException(`Usuario no encontrado.`);
+      if (nuevoUsuario.profesional && nuevoUsuario.profesional.id !== id)
+        throw new ConflictException(`Usuario ya asociado.`);
 
-      // Actualiza tanto la clave foránea (idUsuario) como la relación del objeto (usuario)
       profesionalToUpdate.idUsuario = nuevoUsuario.id;
-      profesionalToUpdate.usuario = nuevoUsuario; // <-- Aquí TypeORM detecta el cambio de relación
+      profesionalToUpdate.usuario = nuevoUsuario;
     }
 
-    // Aplica las actualizaciones parciales a las propiedades primitivas de la entidad cargada.
-    // Usa Object.assign, excluyendo `idUsuario` ya que lo maneja explícitamente arriba.
-    const { idUsuario: _, ...restOfUpdateDto } = updateProfesionalDto; // Desestructura para excluir idUsuario
+    const { idUsuario: _, ...restOfUpdateDto } = updateProfesionalDto;
     Object.assign(profesionalToUpdate, restOfUpdateDto);
 
-    // TypeORM detecta los cambios y solo actualiza las columnas modificadas.
     return this.profesionalesRepository.save(profesionalToUpdate);
   }
 
-  /**
-   * Elimina un profesional de la base de datos.
-   * @param id El ID del profesional a eliminar.
-   * @throws NotFoundException Si el profesional no existe.
-   */
   async elimina(id: string): Promise<void> {
     const profesional = await this.findOne(id);
-
-    if (!profesional) {
-      throw new NotFoundException(
-        `Profesional con ID '${id}' no encontrado para eliminar.`,
-      );
-    }
-
-    // Nota: Gracias a la integridad referencial de SQL,
-    // si tienes configurado onDelete: 'CASCADE' en la tabla intermedia,
-    // se borrarán sus servicios automáticamente. Si no, TypeORM fallará
-    // protegiendo los datos.
+    if (!profesional) throw new NotFoundException(`Profesional no encontrado.`);
     await this.profesionalesRepository.remove(profesional);
   }
 
-  /**
-   * Verifica si un profesional específico ofrece un servicio particular.
-   * @param idProfesional El ID del profesional.
-   * @param idServicio El ID del servicio.
-   * @returns true si el profesional ofrece el servicio, false en caso contrario.
-   */
   async profesionalOfreceServicio(
     idProfesional: string,
     idServicio: string,
   ): Promise<boolean> {
-    // Asume que ProfesionalServiciosService tiene un método para buscar por ambos IDs
     const asociacion =
       await this.profesionalServiciosService.findByProfesionalAndServicio(
         idProfesional,
         idServicio,
-      ); // ¡Asume este método!
-    return !!asociacion; // Devuelve true si la asociación existe, false si es null/undefined
+      );
+    return !!asociacion;
   }
 }
