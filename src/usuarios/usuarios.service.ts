@@ -3,13 +3,15 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { Usuario } from './entities/usuario.entity';
-import { CreateUsuarioDto } from './dto/create-usuario.dto'; // Necesitarás crear este DTO
+import { CreateUsuarioDto } from './dto/create-usuario.dto';
+import { ChangePasswordDto } from './dto/change-password.dto'; // Importamos el nuevo DTO
 import * as bcrypt from 'bcrypt';
-import { Rol } from '../roles/entities/rol.entity'; // Importa la entidad Rol
+import { Rol } from '../roles/entities/rol.entity';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 
 @Injectable()
@@ -17,15 +19,12 @@ export class UsuariosService {
   constructor(
     @InjectRepository(Usuario)
     private usuariosRepository: Repository<Usuario>,
-    @InjectRepository(Rol) // Inyecta el repositorio de Rol para buscar roles
+    @InjectRepository(Rol)
     private rolesRepository: Repository<Rol>,
   ) {}
 
   /**
    * Busca un usuario por su nombre de usuario.
-   * Utilizado principalmente para la validación de credenciales durante el inicio de sesión.
-   * @param nombreUsuario El nombre de usuario a buscar.
-   * @returns El objeto Usuario si se encuentra, incluyendo su relación con el rol, o undefined.
    */
   async buscarPorNombreUsuario(nombreUsuario: string): Promise<Usuario | null> {
     const usuario = await this.usuariosRepository.findOne({
@@ -37,27 +36,18 @@ export class UsuariosService {
 
   /**
    * Busca un usuario por su ID.
-   * Utilizado para obtener detalles completos del usuario, incluyendo su rol.
-   * @param id El ID del usuario a buscar.
-   * @returns El objeto Usuario si se encuentra, incluyendo su relación con el rol, o null.
    */
   async buscarPorId(id: string): Promise<Usuario | null> {
     return this.usuariosRepository.findOne({
       where: { id },
-      relations: ['rol'], // Asegura que la relación 'rol' se cargue
+      relations: ['rol'],
     });
   }
 
   /**
-   * Crea un nuevo usuario en la base de datos.
-   * Hashea la contraseña antes de guardarla y asocia el rol.
-   * @param createUsuarioDto Datos para la creación del usuario.
-   * @returns El usuario recién creado.
-   * @throws ConflictException si el nombre de usuario ya existe.
-   * @throws NotFoundException si el rol especificado no existe.
+   * Crea un nuevo usuario hasheando su contraseña.
    */
   async create(createUsuarioDto: CreateUsuarioDto): Promise<Usuario> {
-    // 1. Verificar si el nombre de usuario ya existe
     const usuarioExistente = await this.usuariosRepository.findOne({
       where: { nombreUsuario: createUsuarioDto.nombreUsuario },
     });
@@ -65,7 +55,6 @@ export class UsuariosService {
       throw new ConflictException('El nombre de usuario ya está en uso.');
     }
 
-    // 2. Buscar el rol por su ID
     const rol = await this.rolesRepository.findOne({
       where: { id: createUsuarioDto.idRol },
     });
@@ -75,54 +64,43 @@ export class UsuariosService {
       );
     }
 
-    // 3. Hashear la contraseña
     const contrasenaHasheada = await bcrypt.hash(
       createUsuarioDto.contrasena,
       10,
     );
 
-    // 4. Crear la instancia del usuario
     const nuevoUsuario = this.usuariosRepository.create({
       nombreUsuario: createUsuarioDto.nombreUsuario,
       contrasena: contrasenaHasheada,
-      rol: rol, // Asigna el objeto Rol completo
-      idRol: rol.id, // También asigna el ID del rol
+      rol: rol,
+      idRol: rol.id,
     });
 
-    // 5. Guardar el usuario en la base de datos
     return this.usuariosRepository.save(nuevoUsuario);
   }
 
-  // Puedes añadir otros métodos CRUD aquí (findAll, findOne, update, remove)
-
   /**
-   * 🚨 NUEVO MÉTODO: Busca usuarios con rol PACIENTE que NO tengan un registro de paciente asociado.
-   * Filtra por el nombre del rol y la nulidad de la relación inversa.
+   * Busca usuarios con rol PACIENTE sin registro de paciente asociado.
    */
   async buscarDisponiblesParaPaciente(): Promise<Usuario[]> {
     return this.usuariosRepository.find({
       where: {
-        rol: { nombre: 'PACIENTE' }, // Filtra por nombre de rol
-        paciente: { id: IsNull() }, // Filtra los que no tienen paciente vinculado
+        rol: { nombre: 'PACIENTE' },
+        paciente: { id: IsNull() },
       },
-      relations: ['rol'], // Solo cargamos el rol para validación visual en el front
+      relations: ['rol'],
     });
   }
 
   /**
    * Guarda una instancia de Usuario.
-   * Útil para actualizar la entidad Usuario después de modificar sus relaciones (ej. paciente o profesional).
-   * @param usuario La entidad Usuario a guardar.
-   * @returns La entidad Usuario guardada.
    */
   async saveUsuario(usuario: Usuario): Promise<Usuario> {
     return this.usuariosRepository.save(usuario);
   }
 
   /**
-   * 🚨 NUEVO MÉTODO: Obtiene todos los usuarios.
-   * Excluye la contraseña por defecto (gracias a select: false en la Entidad).
-   * @returns Una lista de todos los objetos Usuario, incluyendo su rol.
+   * Obtiene todos los usuarios.
    */
   async findAll(): Promise<Usuario[]> {
     return this.usuariosRepository.find({
@@ -130,8 +108,9 @@ export class UsuariosService {
     });
   }
 
-  // 🚨 MÉTODO PARA AUTH: Permite obtener la contraseña hasheada
-  // Usará el Query Builder para añadir select('usuario.contrasena')
+  /**
+   * Método para Auth: obtiene el usuario incluyendo la contraseña oculta.
+   */
   async findByUsernameForAuth(nombreUsuario: string): Promise<Usuario | null> {
     return this.usuariosRepository
       .createQueryBuilder('usuario')
@@ -139,25 +118,59 @@ export class UsuariosService {
       .where('usuario.nombreUsuario = :nombreUsuario', { nombreUsuario })
       .getOne();
   }
+
   /**
-   * 🚨 NUEVO MÉTODO: Actualiza parcialmente un usuario.
-   * Maneja el hasheo de la contraseña si se proporciona.
-   * @param id ID del usuario a actualizar.
-   * @param updateUsuarioDto Datos a actualizar.
-   * @returns El usuario actualizado.
-   * @throws NotFoundException si el usuario o rol no existen.
+   * 🔐 NUEVO MÉTODO: Cambia la contraseña validando la anterior.
+   * @param id ID del usuario (obtenido del JWT).
+   * @param dto Datos con la contraseña actual y la nueva.
+   */
+  async changePassword(
+    id: string,
+    dto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    // 1. Buscamos el usuario incluyendo la contraseña oculta
+    const usuario = await this.usuariosRepository
+      .createQueryBuilder('usuario')
+      .addSelect('usuario.contrasena')
+      .where('usuario.id = :id', { id }) // Asegura que coincida con el UUID
+      .getOne();
+
+    if (!usuario) {
+      // Si llegamos aquí, el ID que mandó el controller no existe en la BD
+      console.error(`ID buscado no encontrado en BD: ${id}`);
+      throw new NotFoundException('Usuario no encontrado en el sistema.');
+    }
+
+    // 2. Comparar contraseña actual
+    const isMatch = await bcrypt.compare(
+      dto.contrasenaActual,
+      usuario.contrasena,
+    );
+
+    if (!isMatch) {
+      throw new UnauthorizedException('La contraseña actual es incorrecta.');
+    }
+
+    // 3. Hashear y guardar nueva contraseña
+    usuario.contrasena = await bcrypt.hash(dto.nuevaContrasena, 10);
+    await this.usuariosRepository.save(usuario);
+
+    return { message: 'Tu contraseña ha sido actualizada con éxito.' };
+  }
+
+  /**
+   * Actualiza parcialmente un usuario.
    */
   async update(
     id: string,
     updateUsuarioDto: UpdateUsuarioDto,
   ): Promise<Usuario> {
-    const usuario = await this.buscarPorId(id); // Reusa el método para encontrar el usuario
+    const usuario = await this.buscarPorId(id);
 
     if (!usuario) {
       throw new NotFoundException(`Usuario con ID "${id}" no encontrado.`);
     }
 
-    // 1. Manejo y Hasheo de Contraseña
     if (updateUsuarioDto.contrasena) {
       updateUsuarioDto.contrasena = await bcrypt.hash(
         updateUsuarioDto.contrasena,
@@ -165,7 +178,6 @@ export class UsuariosService {
       );
     }
 
-    // 2. Manejo de Rol (si se proporciona un nuevo idRol)
     let rol: Rol | null | undefined = undefined;
     if (updateUsuarioDto.idRol) {
       rol = await this.rolesRepository.findOne({
@@ -178,30 +190,22 @@ export class UsuariosService {
       }
     }
 
-    // 3. Aplicar las actualizaciones a la entidad existente
-    // Usa Object.assign o merge para aplicar solo los campos provistos.
     const usuarioActualizado = this.usuariosRepository.merge(usuario, {
       ...updateUsuarioDto,
-      rol: rol, // Sobrescribe la relación 'rol' si se encontró un nuevo rol
+      rol: rol,
       idRol: updateUsuarioDto.idRol,
     });
 
-    // 4. Guardar y retornar el usuario
     return this.usuariosRepository.save(usuarioActualizado);
   }
 
   /**
-   * 🚨 NUEVO MÉTODO: Elimina un usuario por su ID.
-   * @param id ID del usuario a eliminar.
-   * @returns El usuario eliminado (opcionalmente) o un resultado de TypeORM.
-   * @throws NotFoundException si el usuario no existe.
+   * Elimina un usuario por su ID.
    */
   async remove(id: string): Promise<void> {
     const result = await this.usuariosRepository.delete(id);
-
     if (result.affected === 0) {
       throw new NotFoundException(`Usuario con ID "${id}" no encontrado.`);
     }
-    // No devolvemos la entidad para indicar que la acción fue exitosa (204 No Content).
   }
 }

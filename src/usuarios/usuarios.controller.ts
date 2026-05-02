@@ -7,10 +7,16 @@ import {
   Param,
   HttpCode,
   HttpStatus,
+  Patch,
+  UseGuards,
+  Request,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { UsuariosService } from './usuarios.service';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
+import { ChangePasswordDto } from './dto/change-password.dto'; // Importamos el nuevo DTO
 import { Usuario } from './entities/usuario.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard'; // Asegúrate de que la ruta sea correcta
 import {
   ApiCreateOperation,
   ApiFindAllOperation,
@@ -30,8 +36,40 @@ export class UsuariosController {
   constructor(private readonly usuariosService: UsuariosService) {}
 
   /**
-   * 🚨 NUEVO ENDPOINT: Obtener usuarios disponibles para ser asociados a un paciente.
-   * IMPORTANTE: Debe ir antes de @Get(':id')
+   * 🔐 NUEVO ENDPOINT: Cambiar la contraseña del usuario autenticado.
+   * Se extrae el ID del usuario del token JWT por seguridad.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Patch('cambiar-contrasena')
+  @ApiOperation({
+    summary: 'Cambia la contraseña del usuario que ha iniciado sesión',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Contraseña actualizada con éxito.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Contraseña actual incorrecta o no autorizado.',
+  })
+  @HttpCode(HttpStatus.OK)
+  async changePassword(
+    @Request() req: any,
+    @Body() changePasswordDto: ChangePasswordDto,
+  ) {
+    const usuarioId = req.user.id;
+
+    if (!usuarioId) {
+      console.error('Error: No se encontró el ID en req.user', req.user);
+      throw new UnauthorizedException('No se pudo identificar al usuario.');
+    }
+
+    return this.usuariosService.changePassword(usuarioId, changePasswordDto);
+  }
+
+  /**
+   * Obtener usuarios disponibles para ser asociados a un paciente.
+   * IMPORTANTE: Debe ir antes de @Get(':id') para evitar conflictos de rutas.
    */
   @Get('disponibles-pacientes')
   @ApiOperation({
@@ -50,10 +88,6 @@ export class UsuariosController {
     return this.usuariosService.create(createUsuarioDto);
   }
 
-  /**
-   * 🚨 NUEVO ENDPOINT: Obtener todos los usuarios.
-   * Utiliza el decorador personalizado para la documentación de Swagger.
-   */
   @Get()
   @ApiFindAllOperation(Usuario, 'Obtiene la lista de todos los usuarios')
   @HttpCode(HttpStatus.OK)
