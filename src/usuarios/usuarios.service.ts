@@ -40,7 +40,7 @@ export class UsuariosService {
   async buscarPorId(id: string): Promise<Usuario | null> {
     return this.usuariosRepository.findOne({
       where: { id },
-      relations: ['rol'],
+      relations: ['rol', 'profesional'],
     });
   }
 

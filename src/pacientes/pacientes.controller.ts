@@ -1,4 +1,3 @@
-// src/pacientes/pacientes.controller.ts
 import {
   Controller,
   Post,
@@ -8,8 +7,9 @@ import {
   HttpCode,
   HttpStatus,
   Patch,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiBody, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { PacientesService } from './pacientes.service';
 import { CreatePacienteDto } from './dto/create-paciente.dto';
 import { UpdatePacienteDto } from './dto/update-paciente.dto';
@@ -19,23 +19,26 @@ import {
   ApiFindAllOperation,
   ApiFindOneOperation,
   ApiUpdateOperation,
-} from '../common/decorators/api-operations.decorator'; // Asegúrate de que este archivo exista y esté correcto
+} from '../common/decorators/api-operations.decorator';
 import { PacienteResponseDto } from './dto/paciente-response.dto';
+
+// Importaciones para la seguridad
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { GetUser } from '../auth/decorators/get-user.decorator';
 
 /**
  * Controlador para la gestión de Pacientes.
  * Expone los endpoints HTTP para realizar operaciones CRUD básicas sobre los pacientes.
  */
+@ApiTags('Pacientes')
+@ApiBearerAuth() // Indica a Swagger que se requiere un token JWT
+@UseGuards(JwtAuthGuard) // Protege todos los endpoints de este controlador
 @Controller('pacientes')
-@ApiTags('Pacientes') // Agrega una etiqueta a este grupo de endpoints
 export class PacientesController {
   constructor(private readonly pacientesService: PacientesService) {}
 
   /**
    * Crea un nuevo paciente.
-   * Maneja las solicitudes POST a /pacientes.
-   * @param createPacienteDto El DTO con los datos para crear el paciente.
-   * @returns El paciente recién creado.
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -66,15 +69,8 @@ export class PacientesController {
       },
     },
   })
-  @ApiResponse({
-    status: 409,
-    description:
-      'El email ya está en uso o el usuario ya está asociado a otro paciente.',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'El usuario asociado no fue encontrado.',
-  })
+  @ApiResponse({ status: 409, description: 'Conflicto con email o usuario.' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
   async create(
     @Body() createPacienteDto: CreatePacienteDto,
   ): Promise<Paciente> {
@@ -82,26 +78,26 @@ export class PacientesController {
   }
 
   /**
-   * Obtiene todos los pacientes.
-   * Maneja las solicitudes GET a /pacientes.
-   * @returns Un array de todos los pacientes.
+   * Obtiene los pacientes.
+   * Si el usuario es PROFESIONAL, solo verá pacientes vinculados a sus citas.
    */
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiFindAllOperation(
     Paciente,
-    'Obtiene todos los pacientes',
+    'Obtiene los pacientes según el rol del usuario logueado',
     PacienteResponseDto,
   )
-  async findAll(): Promise<Paciente[]> {
-    return this.pacientesService.findAll();
+  async findAll(@GetUser() user: any): Promise<Paciente[]> {
+    // Si el usuario es un profesional, extraemos su ID de profesional para filtrar
+    const profesionalId =
+      user.rol === 'PROFESIONAL' ? user.idProfesional : undefined;
+
+    return this.pacientesService.findAll(profesionalId);
   }
 
   /**
    * Obtiene un paciente específico por su ID.
-   * Maneja las solicitudes GET a /pacientes/:id.
-   * @param id El ID (UUID) del paciente a buscar.
-   * @returns El paciente encontrado o null.
    */
   @Get(':id')
   @HttpCode(HttpStatus.OK)
@@ -116,10 +112,6 @@ export class PacientesController {
 
   /**
    * Actualiza parcialmente un paciente existente.
-   * Maneja las solicitudes PATCH a /pacientes/:id.
-   * @param id El ID del paciente a actualizar.
-   * @param updatePacienteDto El DTO con los datos parciales para actualizar.
-   * @returns El objeto Paciente actualizado.
    */
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
@@ -135,18 +127,9 @@ export class PacientesController {
         },
         description: 'Ejemplo de actualización de teléfono y dirección.',
       },
-      ejemplo2: {
-        value: {
-          email: 'nuevo.email@example.com',
-        },
-        description: 'Ejemplo de actualización de solo el email.',
-      },
     },
   })
-  @ApiResponse({
-    status: 409,
-    description: 'El email ya está en uso por otro paciente.',
-  })
+  @ApiResponse({ status: 409, description: 'Email en uso.' })
   async actualiza(
     @Param('id') id: string,
     @Body() updatePacienteDto: UpdatePacienteDto,

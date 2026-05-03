@@ -1,10 +1,10 @@
 // src/auth/auth.service.ts
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { UsuariosService } from '../usuarios/usuarios.service'; // Asegúrate de que esta ruta sea correcta
+import { UsuariosService } from '../usuarios/usuarios.service';
 import * as bcrypt from 'bcrypt';
-import { JwtPayload } from './interfaces/jwt-payload.interface'; // Importa la interfaz JwtPayload
-import { Usuario } from '../usuarios/entities/usuario.entity'; // Importa la entidad Usuario
+import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { Usuario } from '../usuarios/entities/usuario.entity';
 
 @Injectable()
 export class AuthService {
@@ -15,9 +15,6 @@ export class AuthService {
 
   /**
    * Valida las credenciales de un usuario.
-   * @param nombreUsuario El nombre de usuario.
-   * @param contrasena La contraseña en texto plano.
-   * @returns El objeto de usuario sin la contraseña si es válido, o null si no.
    */
   async validateUsuario(
     nombreUsuario: string,
@@ -25,19 +22,17 @@ export class AuthService {
   ): Promise<Partial<Usuario> | null> {
     const usuario =
       await this.usuariosService.findByUsernameForAuth(nombreUsuario);
-    if (!usuario) {
+
+    if (!usuario || !usuario.contrasena) {
       return null;
     }
-    if (!usuario.contrasena) {
-      // Esto solo debería ocurrir si la consulta falla, pero es un buen control
-      return null;
-    }
+
     const esContrasenaValida = await bcrypt.compare(
       contrasena,
       usuario.contrasena,
     );
+
     if (esContrasenaValida) {
-      // Retorna el usuario sin la contraseña para evitar exponerla
       const { contrasena, ...resultado } = usuario;
       return resultado;
     }
@@ -45,37 +40,48 @@ export class AuthService {
   }
 
   /**
-   * Genera un token JWT para un usuario validado.
-   * @param usuario El objeto de usuario validado.
-   * @returns Un objeto con el token de acceso.
+   * Genera un token JWT incluyendo el idProfesional si aplica.
    */
   async login(usuario: Usuario) {
-    // Asegúrate de que el usuario tenga la propiedad 'rol' cargada (eager: true en Usuario.rol)
-    // o busca el rol si no está cargado.
-    if (!usuario.rol) {
-      // Esto no debería ocurrir si 'eager: true' está en la relación del rol en Usuario.entity.ts
-      // Pero es una buena práctica manejarlo o asegurarse de que el rol se carga.
-      const usuarioConRol = await this.usuariosService.buscarPorId(usuario.id); // Asegúrate de implementar buscarPorId
-      if (usuarioConRol) {
-        usuario = usuarioConRol;
-      } else {
+    // 1. Aseguramos que el usuario tenga el rol y la relación profesional cargada
+    // Si no están, los buscamos.
+    let usuarioCompleto = usuario;
+    if (
+      !usuario.rol ||
+      (usuario.rol.nombre === 'PROFESIONAL' && !usuario.profesional)
+    ) {
+      const buscado = await this.usuariosService.buscarPorId(usuario.id);
+      if (!buscado) {
         throw new UnauthorizedException(
-          'No se pudo obtener la información del rol del usuario.',
+          'No se pudo obtener la información del usuario.',
         );
       }
+      usuarioCompleto = buscado;
     }
 
+    // 2. Preparamos el payload básico
     const payload: JwtPayload = {
-      sub: usuario.id,
-      nombreUsuario: usuario.nombreUsuario,
-      idRol: usuario.rol.id, // Accede al ID del rol
-      nombreRol: usuario.rol.nombre, // Accede al nombre del rol
+      sub: usuarioCompleto.id,
+      nombreUsuario: usuarioCompleto.nombreUsuario,
+      idRol: usuarioCompleto.rol.id,
+      nombreRol: usuarioCompleto.rol.nombre,
     };
+
+    // 3. Si es PROFESIONAL, inyectamos su ID de profesional en el payload
+    // Esto es lo que usará el controlador para filtrar la lista de pacientes
+    if (
+      usuarioCompleto.rol.nombre === 'PROFESIONAL' &&
+      usuarioCompleto.profesional
+    ) {
+      payload.idProfesional = usuarioCompleto.profesional.id;
+    }
 
     return {
       access_token: this.jwtService.sign(payload),
-      nombreUsuario: usuario.nombreUsuario,
-      nombreRol: usuario.rol.nombre,
+      nombreUsuario: usuarioCompleto.nombreUsuario,
+      nombreRol: usuarioCompleto.rol.nombre,
+      // Opcional: devolver el idProfesional también en la respuesta plana para el frontend
+      idProfesional: payload.idProfesional,
     };
   }
 }
