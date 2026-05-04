@@ -6,6 +6,7 @@ import {
   IsUUID,
   IsOptional,
   MaxLength,
+  Matches,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -94,4 +95,30 @@ export class CreateProfesionalDto {
   @IsOptional()
   @IsUUID()
   idCentroDeSalud?: string;
+
+  @ApiProperty({
+    description: 'Hora de inicio de jornada base',
+    example: '08:00',
+    required: false,
+    default: '08:00',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):?([0-5]\d)$/, {
+    message: 'La hora de inicio debe tener formato HH:mm',
+  })
+  horaInicioBase?: string;
+
+  @ApiProperty({
+    description: 'Hora de fin de jornada base',
+    example: '16:00',
+    required: false,
+    default: '16:00',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):?([0-5]\d)$/, {
+    message: 'La hora de fin debe tener formato HH:mm',
+  })
+  horaFinBase?: string;
 }

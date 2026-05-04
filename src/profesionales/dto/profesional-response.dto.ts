@@ -52,6 +52,18 @@ export class ProfesionalResponseDto {
   })
   idCentroDeSalud: string;
 
+  @ApiProperty({
+    example: '08:00',
+    description: 'Hora de inicio base configurada.',
+  })
+  horaInicioBase: string;
+
+  @ApiProperty({
+    example: '16:00',
+    description: 'Hora de fin base configurada.',
+  })
+  horaFinBase: string;
+
   // NOTA: Omitimos las relaciones complejas (usuario, agenda, citas, profesionalServicios)
   // ya que este DTO se usa a menudo para anidamiento y no debe ser recursivo.
 }

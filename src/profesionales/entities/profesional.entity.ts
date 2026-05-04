@@ -65,6 +65,27 @@ export class Profesional {
   @Column({ name: 'id_centro_salud', type: 'uuid', nullable: true })
   idCentroDeSalud: string;
 
+  @ApiProperty({
+    description: 'Hora de inicio de jornada base',
+    example: '08:00',
+  })
+  @Column({
+    name: 'hora_inicio_base',
+    type: 'varchar',
+    length: 5,
+    default: '08:00',
+  })
+  horaInicioBase: string;
+
+  @ApiProperty({ description: 'Hora de fin de jornada base', example: '16:00' })
+  @Column({
+    name: 'hora_fin_base',
+    type: 'varchar',
+    length: 5,
+    default: '16:00',
+  })
+  horaFinBase: string;
+
   @ManyToOne(() => CentroDeSalud, (centro) => centro.profesionales, {
     nullable: true,
     onDelete: 'SET NULL', // Si se borra el centro, el profesional puede existir sin centro
