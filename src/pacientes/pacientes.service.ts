@@ -88,6 +88,22 @@ export class PacientesService {
     });
   }
 
+  /**
+   * Búsqueda global por texto (Nombre o Apellido)
+   * Útil para que Rafael encuentre pacientes de Pao
+   */
+  async searchGlobal(term: string): Promise<Paciente[]> {
+    return this.pacientesRepository
+      .createQueryBuilder('paciente')
+      .where('LOWER(paciente.nombre) LIKE LOWER(:term)', { term: `%${term}%` })
+      .orWhere('LOWER(paciente.apellido) LIKE LOWER(:term)', {
+        term: `%${term}%`,
+      })
+      .leftJoinAndSelect('paciente.usuario', 'usuario')
+      .take(10) // Limitamos para no saturar
+      .getMany();
+  }
+
   async actualiza(
     id: string,
     updatePacienteDto: UpdatePacienteDto,

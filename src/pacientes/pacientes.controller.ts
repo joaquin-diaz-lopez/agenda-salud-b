@@ -1,3 +1,5 @@
+// src/pacientes/pacientes.controller.ts
+
 import {
   Controller,
   Post,
@@ -8,6 +10,8 @@ import {
   HttpStatus,
   Patch,
   UseGuards,
+  ConflictException,
+  Query,
 } from '@nestjs/common';
 import { ApiTags, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { PacientesService } from './pacientes.service';
@@ -28,77 +32,55 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 
 /**
  * Controlador para la gestión de Pacientes.
- * Expone los endpoints HTTP para realizar operaciones CRUD básicas sobre los pacientes.
  */
 @ApiTags('Pacientes')
-@ApiBearerAuth() // Indica a Swagger que se requiere un token JWT
-@UseGuards(JwtAuthGuard) // Protege todos los endpoints de este controlador
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('pacientes')
 export class PacientesController {
   constructor(private readonly pacientesService: PacientesService) {}
 
   /**
    * Crea un nuevo paciente.
+   * Si el email ya existe, lanza un ConflictException que el Frontend
+   * debe usar para recuperar al paciente existente y proceder con la cita.
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiCreateOperation(Paciente, 'Crea un nuevo paciente')
-  @ApiBody({
-    type: CreatePacienteDto,
-    description: 'Datos para crear un nuevo paciente.',
-    examples: {
-      ejemplo1: {
-        value: {
-          nombre: 'Juan',
-          apellido: 'Pérez',
-          fechaNacimiento: '1990-05-21',
-          telefono: '55-1234-5678',
-          email: 'juan.perez@example.com',
-          direccion: 'Calle Falsa 123, Ciudad de México',
-          idUsuario: '123e4567-e89b-12d3-a456-426614174000',
-        },
-        description: 'Ejemplo de creación de un paciente con todos los campos.',
-      },
-      ejemplo2: {
-        value: {
-          nombre: 'Ana',
-          apellido: 'García',
-        },
-        description:
-          'Ejemplo de creación de un paciente con solo los campos obligatorios.',
-      },
-    },
+  @ApiBody({ type: CreatePacienteDto })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description:
+      'El email ya está registrado. El sistema permite recuperar el ID para la cita.',
   })
-  @ApiResponse({ status: 409, description: 'Conflicto con email o usuario.' })
-  @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
   async create(
     @Body() createPacienteDto: CreatePacienteDto,
   ): Promise<Paciente> {
+    // La lógica de persistencia progresiva se apoya en que el Service
+    // ya valida el email. Si falla, el flujo atómico en el Front se detiene
+    // y ofrece seleccionar al paciente existente.
     return this.pacientesService.create(createPacienteDto);
   }
 
-  /**
-   * Obtiene los pacientes.
-   * Si el usuario es PROFESIONAL, solo verá pacientes vinculados a sus citas.
-   */
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiFindAllOperation(
     Paciente,
-    'Obtiene los pacientes según el rol del usuario logueado',
+    'Obtiene los pacientes según rol',
     PacienteResponseDto,
   )
   async findAll(@GetUser() user: any): Promise<Paciente[]> {
-    // Si el usuario es un profesional, extraemos su ID de profesional para filtrar
     const profesionalId =
       user.rol === 'PROFESIONAL' ? user.idProfesional : undefined;
-
     return this.pacientesService.findAll(profesionalId);
   }
 
-  /**
-   * Obtiene un paciente específico por su ID.
-   */
+  @Get('search')
+  async search(@Query('term') term: string) {
+    return this.pacientesService.searchGlobal(term);
+  }
+
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiFindOneOperation(
@@ -110,26 +92,9 @@ export class PacientesController {
     return this.pacientesService.findOne(id);
   }
 
-  /**
-   * Actualiza parcialmente un paciente existente.
-   */
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
   @ApiUpdateOperation(Paciente, 'Actualiza un paciente por su ID')
-  @ApiBody({
-    type: UpdatePacienteDto,
-    description: 'Datos parciales para actualizar un paciente.',
-    examples: {
-      ejemplo1: {
-        value: {
-          telefono: '55-9876-5432',
-          direccion: 'Av. Siempre Viva 742',
-        },
-        description: 'Ejemplo de actualización de teléfono y dirección.',
-      },
-    },
-  })
-  @ApiResponse({ status: 409, description: 'Email en uso.' })
   async actualiza(
     @Param('id') id: string,
     @Body() updatePacienteDto: UpdatePacienteDto,
